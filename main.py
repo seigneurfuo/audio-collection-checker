@@ -4,81 +4,127 @@ import sys
 
 from pymediainfo import MediaInfo
 
+
 def is_japanese_in_string(text):
     # https://gist.github.com/ryanmcgrath/982242
     regex = re.compile("[\u3000-\u303F]|[\u3040-\u309F]|[\u30A0-\u30FF]|[\uFF00-\uFFEF]|[\u4E00-\u9FAF]|[\u2605-\u2606]|[\u2190-\u2195]|\u203B")
-    return regex.match(text)
+    # Car regex.match ne fonctionne pas si on n'a pas des chractères japonais dès le début
+    return regex.search(text) if text else None
 
-def check_file_mediainfo(filepath):
-    msg = ""
+class Song():
 
-    media_info = MediaInfo.parse(filepath)
-    for track in media_info.tracks:
-        if track.track_type == "General":
-            if not track.performer:
-                msg += "\n\t👉 Artiste manquant"
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.errors = []
+
+    def check_rules(self):
+        media_info = MediaInfo.parse(self.filepath)
+        for track in media_info.tracks:
+            if track.track_type == "General":
+                self.check_artist(track)
+                self.check_multiple_artists(track)
+                self.check_album(track)
+                self.check_track(track)
+                self.check_date(track)
+                self.check_cover(track)
+
+                self.check_for_japanese_text(track)
+
+            if track.track_type == "Audio":
+                self.check_bitrate(track)
+
+    # TODO: Artiste de l'album
+    def check_artist(self, track):
+        if not track.album:
+            self.errors.append("👉 Nom d'artiste manquant")
+
+    def check_multiple_artists(self, track):
+        # Si le nom de l'artiste n'est pas en majuscule
+        if track.performer:
+            if "&" in str(track.performer) or ";" in str(track.performer):
+                self.errors.append("👉 Multiples artistes: {}".format(track.performer))
+
             else:
-                if is_japanese_in_string(track.performer):
-                    msg += "\n\t👉 🇯🇵 Nom de l'artiste en Japonais".format(track.performer)
+                splitted = track.performer.split(" ")
 
-                # Si le nom de l'artiste n'est pas en majuscule
-                if "&" in track.performer or ";" in track.performer:
-                    msg += "\n\t👉 Multiples artistes: {}".format(track.performer)
+                if len(splitted) >= 2:
+                    name = splitted[-1]
+                    if name.upper() != name:
+                        self.errors.append("👉 L'artiste n'a pas son nom de famille Majuscule")
 
-                else:
-                    splitted = track.performer.split(" ")
+    def check_album(self, track):
+        if not track.album:
+            self.errors.append("👉 Nom d'album manquant")
 
-                    if len(splitted) >= 2:
-                        name = splitted[-1]
-                        if name.upper() != name:
-                            msg += "\n\t👉 L'artiste n'a pas son nom de famille Majuscule"
+    def check_track(self, track):
+        if not track.title:
+            self.errors.append("👉 Nom de piste manquant")
 
+    def check_date(self, track):
+        if not track.recorded_date:  # track.year
+            self.errors.append("👉 Année manquante: (track.year: {})".format(track.year, track.recorded_date))
 
+    def check_cover(self, track):
+        if not track.cover:
+            self.errors.append("👉 🖼️ Image manquante")
 
-            if not track.album:
-                msg += "\n\t👉 Nom d'albulm manquant"
-            else:
-                if is_japanese_in_string(track.album):
-                    msg += "\n\t👉 🇯🇵 Nom de l'album en Japonais".format(track.album)
+    def check_bitrate(self, track):
+        if not track.bit_rate:
+            self.errors.append("👉 📢 Pas de tags audio")
 
-            if not track.title:
-                msg += "\n\t👉 Nom de piste manquant"
-            else:
-                if is_japanese_in_string(track.title):
-                    msg += "\n\t👉 🇯🇵 Nom du morceau en Japonais".format(track.title)
+        # < 320Kbps
+        elif track.bit_rate < 320000:
+            self.errors.append("👉 📢 Le bitrate est inférieur à 320kbps: {}".format(track.bit_rate))
 
-            if not track.recorded_date: # track.year
-                msg += "\n\t👉 Année manquante: (track.year: {})".format(track.year, track.recorded_date)
+    def check_for_japanese_text(self, track):
+        self.check_for_japanese_artist(track)
+        self.check_for_japanese_album(track)
+        self.check_for_japanese_track(track)
 
-            if not track.cover:
-                msg += "\n\t👉 Image manquante"
+    def check_for_japanese_artist(self, track):
+        if is_japanese_in_string(track.performer):
+            self.errors.append("👉 🇯🇵 Nom de l'artiste en Japonais".format(track.performer))
 
-            # TODO: Artiste de l'album
+    def check_for_japanese_album(self, track):
+        if is_japanese_in_string(track.album):
+            self.errors.append("👉 🇯🇵 Nom de l'album en Japonais".format(track.album))
 
-        elif track.track_type == "Audio":
-            # ---- 320 kpbs ----
-            if not track.bit_rate:
-                msg += "\n\t👉 Pas de tags audio"
+    def check_for_japanese_track(self, track):
+        if is_japanese_in_string(track.title):
+            self.errors.append("👉 🇯🇵 Nom du morceau en Japonais".format(track.title))
 
-            elif track.bit_rate < 320000:
-                msg += "\n\t👉 Le bitrate est inférieur à 320kbps: {}".format(track.bit_rate)
-
-    if msg:
-        print(filepath, msg, "\n")
+    def append_errors_to_list(self, errors_list):
+        if self.errors:
+            errors = {"filepath": self.filepath, "errors": self.errors}
+            errors_list.append(errors)
 
 def main():
     path = sys.argv[1]
     extensions = (".mp3")
+    entries = []
+    ignore_paths = ()
 
+    with open("ignore.txt", "r", encoding="utf-8") as ignore_file:
+        ignore_paths = tuple(map(lambda row: row.strip(), ignore_file.readlines()))
+
+    # -----  -----
     for root, directories, filenames in os.walk(path):
-        msg = "\n----- 📁 {} -----".format(root)
-        print(msg)
-
         for filename in filenames:
-            if filename.lower().endswith(extensions):
-                audio_file = os.path.join(root, filename)
-                check_file_mediainfo(audio_file)
+            if not root.startswith(ignore_paths):
+                if filename.lower().endswith(extensions):
+                    filepath = os.path.join(root, filename)
+                    song = Song(filepath)
+                    song.check_rules()
+                    song.append_errors_to_list(entries)
 
+    # -----  -----
+    for entry in entries:
+        print(entry["filepath"])
+
+        for error in entry["errors"]:
+            print("  {}".format(error))
+
+        print()
 
 if __name__ == "__main__":
     main()
