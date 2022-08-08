@@ -1,7 +1,1 @@
-coverage==5.5
-deprecation==2.1.0
-eyed3==0.9.6
-filetype==1.0.8
-packaging==21.2
-pyparsing==2.4.7
-toml==0.10.2
+pymediainfo==5.1.0
