@@ -1,10 +1,8 @@
 import os
 import re
+import sys
 
 from pymediainfo import MediaInfo
-
-path = "/home/seigneurfuo/NAS/Fichiers/Musique"
-extensions = (".mp3")
 
 def is_japanese_in_string(text):
     # https://gist.github.com/ryanmcgrath/982242
@@ -17,52 +15,68 @@ def check_file_mediainfo(filepath):
     media_info = MediaInfo.parse(filepath)
     for track in media_info.tracks:
         if track.track_type == "General":
-            if is_japanese_in_string(track.performer):
-                msg += "\n\t- Nom de l'artiste en Japonais"
+            if not track.performer:
+                msg += "\n\t👉 Artiste manquant"
+            else:
+                if is_japanese_in_string(track.performer):
+                    msg += "\n\t👉 🇯🇵 Nom de l'artiste en Japonais".format(track.performer)
 
-            # Si le nom de l'artiste n'est pas en majuscule
-            if not "&" or ";" in track.performer:
-                splitted = track.performer.split(" ")
+                # Si le nom de l'artiste n'est pas en majuscule
+                if "&" in track.performer or ";" in track.performer:
+                    msg += "\n\t👉 Multiples artistes: {}".format(track.performer)
 
-                if len(splitted) >= 2:
-                    name = splitted[-1]
-                    if name.upper() != name:
-                        msg += "\n\t- L'artiste n'a pas son nom de famille Majuscule"
+                else:
+                    splitted = track.performer.split(" ")
 
-            if "&" or ";" in track.performer:
-                msg += "\n\t- Multiples artistes"
+                    if len(splitted) >= 2:
+                        name = splitted[-1]
+                        if name.upper() != name:
+                            msg += "\n\t👉 L'artiste n'a pas son nom de famille Majuscule"
 
-            if is_japanese_in_string(track.album):
-                msg += "\n\t- Nom de l'album en Japonais"
 
-            if is_japanese_in_string(track.title):
-                msg += "\n\t- Nom du morceau en Japonais"
 
-            if not track.year:
-                msg += "\n\t- Année manquante"
+            if not track.album:
+                msg += "\n\t👉 Nom d'albulm manquant"
+            else:
+                if is_japanese_in_string(track.album):
+                    msg += "\n\t👉 🇯🇵 Nom de l'album en Japonais".format(track.album)
+
+            if not track.title:
+                msg += "\n\t👉 Nom de piste manquant"
+            else:
+                if is_japanese_in_string(track.title):
+                    msg += "\n\t👉 🇯🇵 Nom du morceau en Japonais".format(track.title)
+
+            if not track.recorded_date: # track.year
+                msg += "\n\t👉 Année manquante: (track.year: {})".format(track.year, track.recorded_date)
 
             if not track.cover:
-                msg += "\n\t- Image manquante"
+                msg += "\n\t👉 Image manquante"
 
             # TODO: Artiste de l'album
 
         elif track.track_type == "Audio":
             # ---- 320 kpbs ----
-            if track.bit_rate is None:
-                msg += "\n\t- Pas de tags"
+            if not track.bit_rate:
+                msg += "\n\t👉 Pas de tags audio"
 
             elif track.bit_rate < 320000:
-                msg += "\n\t- Le bitrate est inférieur à 320kbps: {}".format(track.bit_rate)
+                msg += "\n\t👉 Le bitrate est inférieur à 320kbps: {}".format(track.bit_rate)
 
     if msg:
         print(filepath, msg, "\n")
 
 def main():
+    path = sys.argv[1]
+    extensions = (".mp3")
+
     for root, directories, filenames in os.walk(path):
+        msg = "\n----- 📁 {} -----".format(root)
+        print(msg)
+
         for filename in filenames:
             if filename.lower().endswith(extensions):
                 audio_file = os.path.join(root, filename)
-                #print(audio_file)
                 check_file_mediainfo(audio_file)
 
 
