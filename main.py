@@ -1,8 +1,9 @@
 import os
 import re
 import sys
+from pprint import pprint
 
-from pymediainfo import MediaInfo
+import pymediainfo
 
 
 def is_japanese_in_string(text):
@@ -18,7 +19,7 @@ class Song():
         self.errors = []
 
     def check_rules(self):
-        media_info = MediaInfo.parse(self.filepath)
+        media_info = pymediainfo.MediaInfo.parse(self.filepath)
         for track in media_info.tracks:
             if track.track_type == "General":
                 self.check_artist(track)
@@ -27,16 +28,19 @@ class Song():
                 self.check_track(track)
                 self.check_date(track)
                 self.check_cover(track)
+                self.check_catalog_number(track)
 
-                self.check_for_japanese_text(track)
+                # TODO: Numéro de piste existe ?
 
-            if track.track_type == "Audio":
-                self.check_bitrate(track)
+                #self.check_for_japanese_text(track)
+
+            #if track.track_type == "Audio":
+                #self.check_bitrate(track)
 
     # TODO: Artiste de l'album
     def check_artist(self, track):
         if not track.album:
-            self.errors.append("👉 Nom d'artiste manquant")
+            self.errors.append("👉 🎤 Nom d'artiste manquant")
 
     def check_multiple_artists(self, track):
         # Si le nom de l'artiste n'est pas en majuscule
@@ -66,7 +70,7 @@ class Song():
 
     def check_cover(self, track):
         if not track.cover:
-            self.errors.append("👉 🖼️ Image manquante")
+            self.errors.append("👉 🖼️  Image manquante")
 
     def check_bitrate(self, track):
         if not track.bit_rate:
@@ -93,6 +97,11 @@ class Song():
         if is_japanese_in_string(track.title):
             self.errors.append("👉 🇯🇵 Nom du morceau en Japonais".format(track.title))
 
+    def check_catalog_number(self, track):
+        #pprint(dir(track))
+        if not track.catalognumber:
+            self.errors.append("👉 📙 Pas de numéro de catalogue")
+
     def append_errors_to_list(self, errors_list):
         if self.errors:
             errors = {"filepath": self.filepath, "errors": self.errors}
@@ -102,22 +111,25 @@ def main():
     path = sys.argv[1]
     extensions = (".mp3")
     entries = []
+
+    # ----- Filters -----
     ignore_paths = ()
+    ignore_list_filename = "ignore.txt"
+    if os.path.isfile(ignore_list_filename):
+        with open(ignore_list_filename, "r", encoding="utf-8") as ignore_file:
+            ignore_paths = tuple(map(lambda row: row.strip(), ignore_file.readlines()))
 
-    with open("ignore.txt", "r", encoding="utf-8") as ignore_file:
-        ignore_paths = tuple(map(lambda row: row.strip(), ignore_file.readlines()))
-
-    # -----  -----
+    # ----- Listing -----
     for root, directories, filenames in os.walk(path):
         for filename in filenames:
-            if not root.startswith(ignore_paths):
+            filepath = os.path.join(root, filename)
+            if not filepath.startswith(ignore_paths):
                 if filename.lower().endswith(extensions):
-                    filepath = os.path.join(root, filename)
                     song = Song(filepath)
                     song.check_rules()
                     song.append_errors_to_list(entries)
 
-    # -----  -----
+    # ----- Affichage des résultats -----
     for entry in entries:
         print(entry["filepath"])
 
